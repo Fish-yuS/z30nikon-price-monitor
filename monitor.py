@@ -4,7 +4,6 @@ import re
 
 import requests
 from bs4 import BeautifulSoup
-from twilio.rest import Client
 
 URL = "https://www.nikonusa.com/p/z-30-refurbished/1749Q"
 
