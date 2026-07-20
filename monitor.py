@@ -1,54 +1,69 @@
-import json
-import os
-import re
-
 import requests
 from bs4 import BeautifulSoup
+import os
+import json
+import re
+from datetime import datetime
+
 
 URL = "https://www.nikonusa.com/p/z-30-refurbished/1749Q"
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0"
-}
 
 PRICE_FILE = "price.json"
 
 
-def load_last_price():
-    if not os.path.exists(PRICE_FILE):
-        return None
-
-    with open(PRICE_FILE, "r") as f:
-        return json.load(f).get("last_price")
-
-
-def save_price(price):
-    with open(PRICE_FILE, "w") as f:
-        json.dump({"last_price": price}, f)
-
+# --------------------------
+# Get Nikon price
+# --------------------------
 
 def get_price():
-    r = requests.get(URL, headers=HEADERS, timeout=20)
-    r.raise_for_status()
 
-    soup = BeautifulSoup(r.text, "lxml")
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 "
+            "(Macintosh; Intel Mac OS X 10_15_7)"
+            " AppleWebKit/537.36 "
+            "Chrome/120 Safari/537.36"
+        )
+    }
 
-    text = soup.get_text(" ", strip=True)
+    response = requests.get(URL, headers=headers)
 
-    prices = re.findall(r"\$ ?(\d+(?:,\d{3})*(?:\.\d{2})?)", text)
+    if response.status_code != 200:
+        raise Exception(
+            f"Failed loading page: {response.status_code}"
+        )
+
+    html = response.text
+
+    # Find dollar prices
+    prices = re.findall(
+        r'\$[0-9,]+\.\d{2}',
+        html
+    )
 
     if not prices:
-        raise Exception("Price not found.")
+        raise Exception(
+            "Could not find price"
+        )
 
-    values = [float(p.replace(",", "")) for p in prices]
+    # Convert first price found
+    price = prices[0]
 
-    # Choose the lowest price shown
-    return min(values)
+    price = (
+        price
+        .replace("$", "")
+        .replace(",", "")
+    )
 
+    return float(price)
+
+
+
+# --------------------------
+# Telegram
+# --------------------------
 
 def send_telegram(old_price, new_price):
-    import requests
-    import os
 
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     chat_id = os.environ["TELEGRAM_CHAT_ID"]
@@ -59,36 +74,94 @@ def send_telegram(old_price, new_price):
 Old price: ${old_price:.2f}
 New price: ${new_price:.2f}
 
-Now:
-https://www.nikonusa.com/p/z-30-refurbished/1749Q
+Dropped: ${old_price-new_price:.2f}
+
+Checked:
+{datetime.now()}
+    
+{URL}
 """
 
     requests.post(
         f"https://api.telegram.org/bot{token}/sendMessage",
-        data={
+        json={
             "chat_id": chat_id,
             "text": message
         }
     )
 
 
+
+# --------------------------
+# Save / Load
+# --------------------------
+
+def load_previous_price():
+
+    if not os.path.exists(PRICE_FILE):
+        return None
+
+    with open(PRICE_FILE, "r") as f:
+        return json.load(f)["price"]
+
+
+
+def save_price(price):
+
+    with open(PRICE_FILE, "w") as f:
+
+        json.dump(
+            {
+                "price": price,
+                "time": str(datetime.now())
+            },
+            f,
+            indent=4
+        )
+
+
+
+# --------------------------
+# Main
+# --------------------------
+
 def main():
-    current = get_price()
-    previous = load_last_price()
 
-    print("Current:", current)
-    print("Previous:", previous)
+    current_price = get_price()
 
-    if previous is None:
-        save_price(current)
-        print("Baseline saved.")
-        return
+    previous_price = load_previous_price()
 
-    if current < previous:
-        send_telegram(previous, current)
-        print("SMS sent!")
 
-    save_price(current)
+    print(
+        f"Current: ${current_price}"
+    )
+
+    print(
+        f"Previous: ${previous_price}"
+    )
+
+
+    if previous_price:
+
+        if current_price < previous_price:
+
+            send_telegram(
+                previous_price,
+                current_price
+            )
+
+            print(
+                "Price dropped! Notification sent."
+            )
+
+        else:
+            print(
+                "No drop."
+            )
+
+
+    save_price(current_price)
+
 
 
 if __name__ == "__main__":
