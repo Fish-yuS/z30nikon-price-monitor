@@ -1,9 +1,9 @@
 name: Nikon Price Monitor
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: "0 * * * *"
-  workflow_dispatch:
 
 jobs:
   check-price:
@@ -13,23 +13,27 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - run: pip install -r requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-      - run: python monitor.py
+      - name: Run price checker
+        run: python monitor.py
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
-      - name: Commit updated price
+      - name: Save updated price
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add price.json
-          git diff --cached --quiet || git commit -m "Update tracked price"
+          git diff --cached --quiet || git commit -m "Update price"
           git push
