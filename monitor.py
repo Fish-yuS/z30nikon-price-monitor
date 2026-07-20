@@ -47,22 +47,29 @@ def get_price():
     return min(values)
 
 
-def send_sms(old_price, new_price):
-    client = Client(
-        os.environ["TWILIO_ACCOUNT_SID"],
-        os.environ["TWILIO_AUTH_TOKEN"]
-    )
+def send_telegram(old_price, new_price):
+    import requests
+    import os
 
-    body = (
-        f"🎉 Nikon Z30 Refurbished price dropped!\n\n"
-        f"${old_price:.2f} → ${new_price:.2f}\n\n"
-        f"{URL}"
-    )
+    token = os.environ["TELEGRAM_BOT_TOKEN"]
+    chat_id = os.environ["TELEGRAM_CHAT_ID"]
 
-    client.messages.create(
-        body=body,
-        from_=os.environ["TWILIO_PHONE_NUMBER"],
-        to=os.environ["YOUR_PHONE_NUMBER"]
+    message = f"""
+🚨 Nikon Z30 Price Drop!
+
+Old price: ${old_price:.2f}
+New price: ${new_price:.2f}
+
+Now:
+https://www.nikonusa.com/p/z-30-refurbished/1749Q
+"""
+
+    requests.post(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data={
+            "chat_id": chat_id,
+            "text": message
+        }
     )
 
 
@@ -79,7 +86,7 @@ def main():
         return
 
     if current < previous:
-        send_sms(previous, current)
+        send_telegram(previous, current)
         print("SMS sent!")
 
     save_price(current)
