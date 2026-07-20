@@ -1,8 +1,7 @@
-import requests
-from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
 import os
 import json
-import re
+import requests
 from datetime import datetime
 
 
@@ -11,57 +10,61 @@ URL = "https://www.nikonusa.com/p/z-30-refurbished/1749Q"
 PRICE_FILE = "price.json"
 
 
-# --------------------------
-# Get Nikon price
-# --------------------------
-
 def get_price():
 
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 "
-            "(Macintosh; Intel Mac OS X 10_15_7)"
-            " AppleWebKit/537.36 "
-            "Chrome/120 Safari/537.36"
-        )
-    }
+    with sync_playwright() as p:
 
-    response = requests.get(URL, headers=headers)
-
-    if response.status_code != 200:
-        raise Exception(
-            f"Failed loading page: {response.status_code}"
+        browser = p.chromium.launch(
+            headless=True
         )
 
-    html = response.text
+        page = browser.new_page()
 
-    # Find dollar prices
+        page.goto(
+            URL,
+            wait_until="networkidle",
+            timeout=60000
+        )
+
+        page.wait_for_timeout(5000)
+
+        text = page.locator("body").inner_text()
+
+        browser.close()
+
+
+    print(text[:2000])
+
+    # Find prices from visible page text
+    import re
+
     prices = re.findall(
         r'\$[0-9,]+\.\d{2}',
-        html
+        text
     )
+
+    print("FOUND PRICES:", prices)
 
     if not prices:
-        raise Exception(
-            "Could not find price"
+        raise Exception("No price found")
+
+    # Remove weird low numbers
+    prices = [
+        float(
+            x.replace("$","").replace(",","")
         )
+        for x in prices
+        if float(
+            x.replace("$","").replace(",","")
+        ) > 200
+    ]
 
-    # Convert first price found
-    price = prices[0]
+    if not prices:
+        raise Exception("No valid product price")
 
-    price = (
-        price
-        .replace("$", "")
-        .replace(",", "")
-    )
-    print(prices)
-    return float(price)
-
+    return min(prices)
 
 
-# --------------------------
-# Telegram
-# --------------------------
 
 def send_telegram(old_price, new_price):
 
@@ -71,14 +74,11 @@ def send_telegram(old_price, new_price):
     message = f"""
 🚨 Nikon Z30 Price Drop!
 
-Old price: ${old_price:.2f}
-New price: ${new_price:.2f}
+Old: ${old_price:.2f}
+New: ${new_price:.2f}
 
 Dropped: ${old_price-new_price:.2f}
 
-Checked:
-{datetime.now()}
-    
 {URL}
 """
 
@@ -91,17 +91,12 @@ Checked:
     )
 
 
-
-# --------------------------
-# Save / Load
-# --------------------------
-
 def load_previous_price():
 
     if not os.path.exists(PRICE_FILE):
         return None
 
-    with open(PRICE_FILE, "r") as f:
+    with open(PRICE_FILE) as f:
         return json.load(f)["price"]
 
 
@@ -109,7 +104,6 @@ def load_previous_price():
 def save_price(price):
 
     with open(PRICE_FILE, "w") as f:
-
         json.dump(
             {
                 "price": price,
@@ -121,46 +115,30 @@ def save_price(price):
 
 
 
-# --------------------------
-# Main
-# --------------------------
-
 def main():
 
-    current_price = get_price()
+    current = get_price()
 
-    previous_price = load_previous_price()
+    previous = load_previous_price()
 
-
-    print(
-        f"Current: ${current_price}"
-    )
-
-    print(
-        f"Previous: ${previous_price}"
-    )
+    print("Current:", current)
+    print("Previous:", previous)
 
 
-    if previous_price:
+    if previous and current < previous:
 
-        if current_price < previous_price:
+        send_telegram(
+            previous,
+            current
+        )
 
-            send_telegram(
-                previous_price,
-                current_price
-            )
+        print("Alert sent!")
 
-            print(
-                "Price dropped! Notification sent."
-            )
-
-        else:
-            print(
-                "No drop."
-            )
+    else:
+        print("No drop.")
 
 
-    save_price(current_price)
+    save_price(current)
 
 
 
