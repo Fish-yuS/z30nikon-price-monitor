@@ -54,7 +54,7 @@ def get_price():
         .replace("$", "")
         .replace(",", "")
     )
-
+    print(prices)
     return float(price)
 
 
