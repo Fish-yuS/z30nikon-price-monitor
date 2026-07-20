@@ -28,28 +28,51 @@ def get_price():
 
         page.wait_for_timeout(5000)
 
+        # Get all visible text
         text = page.locator("body").inner_text()
 
         browser.close()
 
 
-    print(text[:2000])
+    print(text[:3000])
 
-    # Find prices from visible page text
+
     import re
+
+
+    # Look for Z30 + 16-50mm lens kit price
+    pattern = r'Z\s*30.*?16-50mm.*?\$([0-9,]+\.\d{2})'
+
+    match = re.search(
+        pattern,
+        text,
+        re.IGNORECASE | re.DOTALL
+    )
+
+
+    if match:
+
+        price = match.group(1)
+
+        return float(
+            price.replace(",", "")
+        )
+
+
+    # Backup method if text order changes
+    print("Specific kit not found, checking prices...")
+
 
     prices = re.findall(
         r'\$[0-9,]+\.\d{2}',
         text
     )
 
+
     print("FOUND PRICES:", prices)
 
-    if not prices:
-        raise Exception("No price found")
 
-    # Remove weird low numbers
-    prices = [
+    valid_prices = [
         float(
             x.replace("$","").replace(",","")
         )
@@ -59,10 +82,14 @@ def get_price():
         ) > 200
     ]
 
-    if not prices:
-        raise Exception("No valid product price")
 
-    return min(prices)
+    if len(valid_prices) >= 2:
+        return valid_prices[1]
+
+
+    raise Exception(
+        "Could not find Nikon Z30 lens kit price"
+    )
 
 
 
